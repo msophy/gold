@@ -42,7 +42,7 @@ button:focus-visible,summary:focus-visible,input:focus-visible{outline:2px solid
 .legend .sym{color:var(--ink);font-weight:600}.legend .tm{color:var(--muted)}
 .gb{color:var(--up)}.gs{color:var(--down)}
 .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:.85rem;color:var(--muted);text-align:center;padding:0 24px;direction:rtl}
-.toast{position:absolute;top:44px;left:50%;transform:translateX(-50%);width:calc(100% - 24px);max-width:520px;background:#14181f;border:1px solid var(--muted);border-radius:10px;padding:10px 12px;font-size:.85rem;line-height:1.5;direction:rtl;text-align:right;z-index:3;box-shadow:0 6px 24px rgba(0,0,0,.6)}
+.toast{white-space:pre-line;position:absolute;top:44px;left:50%;transform:translateX(-50%);width:calc(100% - 24px);max-width:520px;background:#14181f;border:1px solid var(--muted);border-radius:10px;padding:10px 12px;font-size:.85rem;line-height:1.5;direction:rtl;text-align:right;z-index:3;box-shadow:0 6px 24px rgba(0,0,0,.6)}
 .toast.buy{border-color:var(--up)}.toast.sell{border-color:var(--down)}
 .toast[hidden]{display:none}
 .foot{padding:8px 12px 10px;border-top:1px solid var(--line);background:var(--panel)}
@@ -115,6 +115,8 @@ input[type=number]{flex:1;min-width:0;color:var(--ink);background:var(--bg);bord
     <div class="sub" id="sentNote"></div>
     <div class="sub" id="sess"></div>
     <div class="sub" id="diag"></div>
+    <div class="sub" id="liq"></div>
+    <div class="sub" id="news"></div>
     <div class="sub" id="stats"></div>
     <div class="sub" id="src"></div>
     <p class="banner" id="banner" hidden></p>
@@ -124,14 +126,20 @@ input[type=number]{flex:1;min-width:0;color:var(--ink);background:var(--bg);bord
       <p class="sub">هذا هو المصدر الرسمي العام الوحيد لمراكز الكبار في الذهب: تقرير هيئة CFTC الأمريكية، يصدر أسبوعيًا (بيانات يوم الثلاثاء) لعقود COMEX الآجلة. لا يوجد مصدر عام لتدفقات البنوك والمؤسسات اللحظية، ولا حصر كامل لكل المتداولين على كل المنصات.</p>
     </details>
     <details>
+      <summary>سجل الإشارات والنتائج</summary>
+      <div class="cot" id="logBody">لا توجد إشارات بعد.</div>
+      <div class="row" style="margin-top:8px"><button class="ghost" id="logCopy">نسخ السجل (CSV)</button></div>
+      <p class="sub">كل إشارة تُسجَّل كما هي، رابحة أو خاسرة أو ملغاة (لم يلمس السعر منطقة الدخول).</p>
+    </details>
+    <details>
       <summary>الإعدادات والتنبيهات والتثبيت</summary>
       <div class="field">
         <label class="f">وقت إرسال الإشارات بتوقيت القاهرة (من ساعة إلى ساعة، الاثنين–الجمعة)</label>
         <div class="row"><input type="number" id="winFrom" inputmode="decimal" min="0" max="23" step="0.5" aria-label="من الساعة"><input type="number" id="winTo" inputmode="decimal" min="1" max="24" step="0.5" aria-label="إلى الساعة"><button class="ghost" id="winApply">حفظ</button></div>
       </div>
       <div class="field">
-        <label class="f">حساسية الإشارات (كلما زادت زادت الإشارات وقلّت جودتها)</label>
-        <div class="row"><button class="ghost" id="sensNormal">عادية</button><button class="ghost" id="sensHigh">عالية</button><button class="ghost" id="sensMax">قصوى</button></div>
+        <label class="chk"><input type="checkbox" id="newsStrict"> الوضع الصارم للأخبار: لا إشارات إذا تعذّر تحميل التقويم الاقتصادي</label>
+        <p class="sub">عند تحميل التقويم، تُوقف الإشارات تلقائيًا قبل الأخبار القوية للدولار بـ 30 دقيقة وبعدها بـ 15 دقيقة (FOMC وNFP وCPI وPCE وغيرها).</p>
       </div>
       <div class="field">
         <label class="chk"><input type="checkbox" id="notifyFill"> تنبيه أيضًا عند الوصول لمنطقة الدخول وعند تحقق الهدف أو ضرب الوقف</label>
@@ -164,7 +172,7 @@ input[type=number]{flex:1;min-width:0;color:var(--ink);background:var(--bg);bord
   var $ = function(id){ return document.getElementById(id); };
   var PRICE_URL = 'https://api.gold-api.com/price/XAU';
   var KEY = 'gold-pro-v1', POLL_MS = 1000, SENT_MS = 300000, COT_MS = 6 * 3600000;
-  var TFS = [60, 300, 900, 3600, 14400, 86400], SIGTFS = [300, 900];
+  var TFS = [60, 300, 900, 3600, 14400, 86400], SIGTFS = [300];
   var TFLBL = { 60:'1د', 300:'5د', 900:'15د', 3600:'1س', 14400:'4س', 86400:'يومي' };
   var TFEN = { 60:'1m', 300:'5m', 900:'15m', 3600:'1H', 14400:'4H', 86400:'1D' };
   var HIST = { 60:'1m', 300:'5m', 900:'15m', 3600:'1h', 14400:'4h', 86400:'1d' };
@@ -174,15 +182,16 @@ input[type=number]{flex:1;min-width:0;color:var(--ink);background:var(--bg);bord
   var cmp = new Intl.NumberFormat('en-US', { notation:'compact', maximumFractionDigits:1 });
   var int0 = new Intl.NumberFormat('en-US', { maximumFractionDigits:0 });
 
-  var S = { tf:300, sens:'high', winFrom:1, winTo:14, notify:false, notifyFill:true, ntfy:'', sentUrl:'', sentExt:null, sentTs:0, pipUsd:0.10,
+  var S = { ver:2, tf:300, winFrom:1, winTo:22, newsStrict:false, news:null, notify:false, notifyFill:true, ntfy:'', sentUrl:'', sentExt:null, sentTs:0, pipUsd:0.10,
             oanda:{ id:'', token:'', env:'practice' }, cot:null, candles:{}, signals:[] };
   TFS.forEach(function(t){ S.candles[t] = []; });
   try {
     var raw = localStorage.getItem(KEY);
     if (raw) {
       var P = JSON.parse(raw);
-      ['tf','sens','winFrom','winTo','notify','notifyFill','ntfy','sentUrl','sentExt','sentTs','pipUsd','oanda','cot'].forEach(function(k){ if (P[k] !== undefined) S[k] = P[k]; });
-      if (Array.isArray(P.signals)) S.signals = P.signals.filter(function(s){ return s && s.ts > Date.now() - 3 * 86400000; }).slice(-120);
+      ['tf','winFrom','winTo','newsStrict','news','notify','notifyFill','ntfy','sentUrl','sentExt','sentTs','pipUsd','oanda','cot'].forEach(function(k){ if (P[k] !== undefined) S[k] = P[k]; });
+      if (P.ver !== 2) { S.winFrom = 1; S.winTo = 22; }
+      if (Array.isArray(P.signals)) S.signals = P.signals.filter(function(s){ return s && s.ts > Date.now() - 14 * 86400000; }).slice(-300);
       if (P.candles) TFS.forEach(function(t){
         if (Array.isArray(P.candles[t])) S.candles[t] = P.candles[t].map(function(a){ return { b:a[0], t:a[0]*t*1000, o:a[1], h:a[2], l:a[3], c:a[4] }; });
       });
@@ -193,14 +202,14 @@ input[type=number]{flex:1;min-width:0;color:var(--ink);background:var(--bg);bord
   var lastSaveAt = 0;
   function save(){
     try {
-      var o = { tf:S.tf, sens:S.sens, winFrom:S.winFrom, winTo:S.winTo, notify:S.notify, notifyFill:S.notifyFill, ntfy:S.ntfy, sentUrl:S.sentUrl, sentExt:S.sentExt, sentTs:S.sentTs, pipUsd:S.pipUsd, oanda:S.oanda, cot:S.cot, signals:S.signals, candles:{} };
+      var o = { ver:2, tf:S.tf, winFrom:S.winFrom, winTo:S.winTo, newsStrict:S.newsStrict, news:S.news, notify:S.notify, notifyFill:S.notifyFill, ntfy:S.ntfy, sentUrl:S.sentUrl, sentExt:S.sentExt, sentTs:S.sentTs, pipUsd:S.pipUsd, oanda:S.oanda, cot:S.cot, signals:S.signals, candles:{} };
       TFS.forEach(function(t){ o.candles[t] = S.candles[t].slice(-400).map(function(c){ return [c.b, c.o, c.h, c.l, c.c]; }); });
       localStorage.setItem(KEY, JSON.stringify(o));
       lastSaveAt = Date.now();
     } catch(e) {}
   }
 
-  var oz = 0, lastOkAt = 0, failures = 0, marketTs = 0, timer = null, inFlight = false, histAt = 0, hiddenAt = 0, srcName = 'gold-api';
+  var xchk = null, lastAlt = 0, oz = 0, lastOkAt = 0, failures = 0, marketTs = 0, timer = null, inFlight = false, histAt = 0, hiddenAt = 0, srcName = 'gold-api';
   var V = { bars:90, off:0, ym:false, yc:0, yr:1 };
   var view = { firstB:0, rightB:0, slot:1, cw:1, top:26, bot:200, min:0, max:1 }, cur = null, pinned = false;
 
@@ -292,24 +301,31 @@ function nextWindow(ts){
   return null;
 }
 
-/* ---------- ICT / CRT engine ---------- */
-var ICT = { minScore:6.5, rrMin:1.2, biasMin:1.5 }, DIAG = null;
+/* ---------- Gold scalping engine: H1 bias -> M15 context -> M5 setup (liquidity sweep + MSS + retest) ---------- */
+var ICT = { minScore:8.5, aPlus:11, watch:7 }, DIAG = null;
 function fail(d){ DIAG = d; return null; }
+function emaLast(arr, n){ var e = emaArr(arr.map(function(c){ return c.c; }), n); return e[e.length-1]; }
 
-function trendOf(arr, price){
-  if (!arr || arr.length < 25) return null;
-  var cl = arr.map(function(c){ return c.c; }), e9 = emaArr(cl, 9), e21 = emaArr(cl, 21), n = cl.length - 1;
-  if (e9[n] > e21[n] && price > e21[n]) return 1;
-  if (e9[n] < e21[n] && price < e21[n]) return -1;
-  return 0;
-}
+/* H1 trend + market structure -> bias (EMA50 / EMA200 and swing structure) */
 function biasOf(x){
-  var a = trendOf(x.d1, x.price), b = trendOf(x.h4, x.price), c = trendOf(x.h1, x.price);
-  if (a === null || b === null || c === null) return null;
-  return { score:1.5 * a + 1.5 * b + c, d1:a, h4:b, h1:c };
+  var h1 = x.h1 || [];
+  if (h1.length < 205) return null;
+  var e50 = emaLast(h1, 50), e200 = emaLast(h1, 200), p = x.price;
+  var e = (e50 > e200 && p > e200) ? 1 : (e50 < e200 && p < e200) ? -1 : 0;
+  var sw = swings(h1.slice(-90), 2), s = 0;
+  if (sw.hi.length >= 2 && sw.lo.length >= 2) {
+    var hh = sw.hi[sw.hi.length-1].p > sw.hi[sw.hi.length-2].p, hl = sw.lo[sw.lo.length-1].p > sw.lo[sw.lo.length-2].p;
+    s = (hh && hl) ? 1 : (!hh && !hl) ? -1 : 0;
+  }
+  return { e:e, s:s, score:e + s };
+}
+function rangeOf(arr, from, to){
+  var hi = -Infinity, lo = Infinity, n = 0;
+  arr.forEach(function(c){ if (c.t >= from && c.t < to) { n++; if (c.h > hi) hi = c.h; if (c.l < lo) lo = c.l; } });
+  return n ? { hi:hi, lo:lo, n:n } : null;
 }
 function buildPools(x, atr){
-  var cs = x.cs, n = cs.length, now = x.now, pools = [], d1 = x.d1 || [], h1 = x.h1 || [], h4 = x.h4 || [], i;
+  var cs = x.cs, n = cs.length, now = x.now, pools = [], d1 = x.d1 || [], h1 = x.h1 || [], m15 = x.m15 || [];
   function P(p, name, side, w, idx){ pools.push({ p:p, name:name, side:side, w:w, i:idx == null ? -1 : idx }); }
   if (d1.length) {
     var pd = d1[d1.length-1]; P(pd.h, 'PDH', 'bsl', 3); P(pd.l, 'PDL', 'ssl', 3);
@@ -317,17 +333,23 @@ function buildPools(x, atr){
     d1.forEach(function(c){ if (Math.floor((c.b + 3) / 7) === wk - 1) { if (c.h > ph) ph = c.h; if (c.l < pl) pl = c.l; } });
     if (ph > -Infinity) { P(ph, 'PWH', 'bsl', 2.5); P(pl, 'PWL', 'ssl', 2.5); }
   }
-  var ds = utcDay(now) * 86400000;
-  if (now - ds >= 6 * 3600000) {
-    var ah = -Infinity, al = Infinity, cnt = 0;
-    cs.forEach(function(c){ if (c.t >= ds && c.t < ds + 6 * 3600000) { cnt++; if (c.h > ah) ah = c.h; if (c.l < al) al = c.l; } });
-    if (cnt >= 6) { P(ah, 'ASH', 'bsl', 2); P(al, 'ASL', 'ssl', 2); }
+  /* Asian range (00:00-06:00 UTC) and London session range (08:00-16:30 London time), from H1 candles */
+  var ds = utcDay(now) * 86400000, lo0 = (480 - londonOff(now) * 60) * 60000;
+  if (now - ds >= 6 * 3600000) { var ar = rangeOf(h1, ds, ds + 6 * 3600000); if (ar && ar.n >= 5) { P(ar.hi, 'ASH', 'bsl', 2); P(ar.lo, 'ASL', 'ssl', 2); } }
+  for (var back = 0; back < 4; back++) {
+    var dd = ds - back * 86400000, wd = weekdayOf(dd);
+    if (wd > 4) continue;
+    var ls = dd + lo0, le = ls + 510 * 60000;
+    if (ls > now - 3600000) continue;
+    var lr = rangeOf(h1, ls, Math.min(le, now));
+    if (lr && lr.n >= 3) { P(lr.hi, 'LNH', 'bsl', 2); P(lr.lo, 'LNL', 'ssl', 2); break; }
   }
-  [[h1, 48, 'H1', 1.5], [h4, 30, 'H4', 2]].forEach(function(z){
-    var a = z[0].slice(-z[1]), sw = swings(a, 2);
-    sw.hi.forEach(function(s){ P(s.p, z[2] + 'H', 'bsl', z[3]); });
-    sw.lo.forEach(function(s){ P(s.p, z[2] + 'L', 'ssl', z[3]); });
-  });
+  var sw1 = swings(h1.slice(-48), 2);
+  sw1.hi.forEach(function(s){ P(s.p, 'H1H', 'bsl', 1.5); });
+  sw1.lo.forEach(function(s){ P(s.p, 'H1L', 'ssl', 1.5); });
+  var sw15 = swings(m15.slice(-60), 2);
+  sw15.hi.forEach(function(s){ P(s.p, 'M15H', 'bsl', 1.25); });
+  sw15.lo.forEach(function(s){ P(s.p, 'M15L', 'ssl', 1.25); });
   var base = Math.max(0, n - 90), sw2 = swings(cs.slice(base), 2), tol = 0.25 * atr;
   sw2.hi.forEach(function(s){ if (s.i + base <= n - 3) P(s.p, 'SwH', 'bsl', 0.75, s.i + base); });
   sw2.lo.forEach(function(s){ if (s.i + base <= n - 3) P(s.p, 'SwL', 'ssl', 0.75, s.i + base); });
@@ -347,6 +369,12 @@ function buildPools(x, atr){
     else out.push(p);
   });
   return out;
+}
+function nearLiq(pools, price){
+  /* above the price: buy-side liquidity (highs) | below the price: sell-side liquidity (lows) */
+  var up = pools.filter(function(p){ return p.side === 'bsl' && p.p > price; }).sort(function(a, b){ return a.p - b.p; }).slice(0, 3).map(function(p){ return { n:p.name, p:+p.p.toFixed(2) }; });
+  var dn = pools.filter(function(p){ return p.side === 'ssl' && p.p < price; }).sort(function(a, b){ return b.p - a.p; }).slice(0, 3).map(function(p){ return { n:p.name, p:+p.p.toFixed(2) }; });
+  return { up:up, dn:dn };
 }
 function findSweep(cs, pools, atr, dir){
   var n = cs.length, best = null, side = dir === 'buy' ? 'ssl' : 'bsl';
@@ -418,7 +446,7 @@ function crtCheck(closed, forming, price, dir){
   return r;
 }
 
-/* x = { cs, h1, h4, d1, curH1, curH4, dOpen, price, now } ; cs = closed candles of the signal timeframe */
+/* x = { cs (M5 closed), m15, h1, d1, curH1, dOpen, price, now } */
 function analyze(x){
   var cs = x.cs, n = cs.length, now = x.now, price = x.price;
   if (n < 60) return fail({ st:'data', n:n });
@@ -429,51 +457,62 @@ function analyze(x){
   if (L.b - cs[n-30].b > 40) return fail({ st:'gap' });
   var bias = biasOf(x);
   if (!bias) return fail({ st:'htf' });
-  var dir = bias.score >= ICT.biasMin ? 'buy' : bias.score <= -ICT.biasMin ? 'sell' : null;
-  if (!dir) return fail({ st:'bias', bs:bias.score });
+  var dir = bias.e === 1 ? 'buy' : bias.e === -1 ? 'sell' : null;
+  if (!dir) return fail({ st:'bias' });
   var pools = buildPools(x, atr), sw = findSweep(cs, pools, atr, dir);
   if (!sw) return fail({ st:'sweep', dir:dir });
   var ms = findMSS(cs, atr, dir, sw.s);
   if (!ms) return fail({ st:'mss', dir:dir, pool:sw.pool.name });
   var zn = findZone(cs, atr, dir, sw.s, ms.m), z = zn.fvg || zn.ob;
   if (!z) return fail({ st:'zone', dir:dir });
-  var buy = dir === 'buy';
+  var buy = dir === 'buy', sgn = buy ? 1 : -1;
   if (buy ? price < z.lo - 0.1 * atr : price > z.hi + 0.1 * atr) return fail({ st:'zone', dir:dir });
   var mid = (z.lo + z.hi) / 2, filled = buy ? price <= mid : price >= mid, entry = filled ? price : mid;
   var sl = buy ? sw.ext - Math.max(0.2 * atr, 0.2) : sw.ext + Math.max(0.2 * atr, 0.2), risk = Math.abs(entry - sl);
   if (risk < 0.6 * atr) { risk = 0.6 * atr; sl = buy ? entry - risk : entry + risk; }
   if (risk > 3.5 * atr) return fail({ st:'risk', dir:dir });
-  var sgn = buy ? 1 : -1, crt = crtCheck(x.h1 || [], x.curH1, price, dir), crt4 = crtCheck(x.h4 || [], x.curH4, price, dir);
-  var cand = pools.filter(function(p){ return p.side === (buy ? 'bsl' : 'ssl') && (p.p - entry) * sgn >= ICT.rrMin * risk && p !== sw.pool; });
-  if (crt && (crt.tgt - entry) * sgn >= ICT.rrMin * risk) cand.push({ p:crt.tgt, name:'CRT' });
+  var crt = crtCheck(x.h1, x.curH1, price, dir);
+  var cand = pools.filter(function(p){ return p.side === (buy ? 'bsl' : 'ssl') && (p.p - entry) * sgn >= 1.0 * risk && p !== sw.pool; });
+  if (crt && (crt.tgt - entry) * sgn >= 1.0 * risk) cand.push({ p:crt.tgt, name:'CRT', w:2 });
   cand.sort(function(a, b){ return (a.p - b.p) * sgn; });
-  var tp1 = cand.length ? cand[0].p : entry + sgn * 1.5 * risk, tp1n = cand.length ? cand[0].name : 'RR1.5';
-  var nx = null; for (var i = 1; i < cand.length; i++) if ((cand[i].p - tp1) * sgn >= 0.4 * risk) { nx = cand[i]; break; }
-  var tp2 = nx ? nx.p : entry + sgn * Math.max(2.5 * risk, (tp1 - entry) * sgn + 0.5 * risk), tp2n = nx ? nx.name : 'RR2.5';
+  if (!cand.length) return fail({ st:'target', dir:dir });
+  var tp1 = cand[0].p, tp1n = cand[0].name, tp2 = null, tp2n = '';
+  for (var i = 1; i < cand.length; i++) if ((cand[i].p - entry) * sgn >= 2.0 * risk) { tp2 = cand[i].p; tp2n = cand[i].name; break; }
+  if (tp2 === null) { tp2 = entry + sgn * Math.max(2.2 * risk, (tp1 - entry) * sgn + 0.6 * risk); tp2n = 'RR calc'; }
   if ((tp2 - entry) * sgn > 6 * risk) tp2 = entry + sgn * 6 * risk;
-  var rr = (tp1 - entry) * sgn / risk;
-  if (rr < ICT.rrMin) return fail({ st:'rr', dir:dir });
+  var rr2 = (tp2 - entry) * sgn / risk, rr1 = (tp1 - entry) * sgn / risk;
+  if (rr2 < 2.0) return fail({ st:'rr', dir:dir });
+  /* strong liquidity sitting between entry and 1R is an obstacle */
+  var blocked = pools.some(function(p){ return p.side === (buy ? 'bsl' : 'ssl') && p.w >= 2 && (p.p - entry) * sgn > 0.3 * risk && (p.p - entry) * sgn < 1.0 * risk; });
 
   var sc = 0, why = [];
-  sc += Math.min(3, sw.pool.w); why.push('sweep ' + sw.pool.name);
+  sc += Math.min(3, sw.pool.w); why.push('Sweep ' + sw.pool.name);
   sc += 1.5; why.push('MSS'); if (ms.disp >= 1.5 * atr) { sc += 0.5; why.push('Displacement'); }
   if (zn.fvg) { sc += 1.5; why.push('FVG'); }
   if (zn.ob) { sc += 1.5; why.push('OB'); }
-  var oteLo = ms.legHi - 0.79 * (ms.legHi - ms.legLo), oteHi = ms.legHi - 0.62 * (ms.legHi - ms.legLo);
-  if (buy ? (mid >= oteLo - 0.1 * atr && mid <= oteHi + 0.1 * atr) : (mid <= ms.legLo + 0.79 * (ms.legHi - ms.legLo) + 0.1 * atr && mid >= ms.legLo + 0.62 * (ms.legHi - ms.legLo) - 0.1 * atr)) { sc += 1; why.push('OTE'); }
-  if (crt) { sc += 2.5; why.push('CRT 1H'); }
-  if (crt4) { sc += 1; why.push('CRT 4H'); }
-  var h1r = (x.h1 || []).slice(-24), hh = -Infinity, ll = Infinity;
-  h1r.forEach(function(c){ if (c.h > hh) hh = c.h; if (c.l < ll) ll = c.l; });
-  if (hh > ll) { var eq = (hh + ll) / 2; if (buy ? entry < eq : entry > eq) { sc += 1; why.push(buy ? 'Discount' : 'Premium'); } }
+  var span = ms.legHi - ms.legLo;
+  var oteLo = buy ? ms.legHi - 0.79 * span : ms.legLo + 0.62 * span, oteHi = buy ? ms.legHi - 0.62 * span : ms.legLo + 0.79 * span;
+  if (mid >= oteLo - 0.1 * atr && mid <= oteHi + 0.1 * atr) { sc += 1; why.push('OTE'); }
+  sc += 0.75; why.push('H1 trend (EMA50/200)');
+  if (bias.s === sgn) { sc += 0.75; why.push('H1 structure'); } else if (bias.s === -sgn) { sc -= 1; why.push('H1 structure against'); }
+  var m15 = x.m15 || [];
+  if (m15.length >= 205) { var a50 = emaLast(m15, 50), a200 = emaLast(m15, 200); if (buy ? a50 > a200 : a50 < a200) { sc += 0.5; why.push('M15 trend'); } }
+  var mr = m15.slice(-48), hh = -Infinity, ll = Infinity;
+  mr.forEach(function(c){ if (c.h > hh) hh = c.h; if (c.l < ll) ll = c.l; });
+  if (hh - ll > 3 * atr) {
+    var pos = (entry - ll) / (hh - ll);
+    if (buy ? pos <= 0.5 : pos >= 0.5) { sc += 1; why.push(buy ? 'Discount' : 'Premium'); }
+    else if (buy ? pos > 0.65 : pos < 0.35) { sc -= 1.5; why.push(buy ? 'Buying in premium' : 'Selling in discount'); }
+  }
+  if (crt) { sc += 1; why.push('CRT 1H'); }
   if (x.dOpen != null && (buy ? entry < x.dOpen : entry > x.dOpen)) { sc += 0.5; why.push(buy ? 'Below Daily Open' : 'Above Daily Open'); }
-  sc += Math.min(2, Math.abs(bias.score) * 0.5); why.push('Bias ' + (buy ? '+' : '') + bias.score);
-  if (nearOpen(now)) { sc += 0.5; why.push('Session open'); }
-  if (sc < ICT.minScore) return fail({ st:'score', dir:dir, s:+sc.toFixed(1), th:ICT.minScore });
+  if (blocked) { sc -= 1.5; why.push('Liquidity in the way'); }
+  var grade = sc >= ICT.aPlus ? 'A+' : sc >= ICT.minScore ? 'A' : sc >= ICT.watch ? 'B' : 'C';
+  if (grade === 'B' || grade === 'C') return fail({ st:'watch', dir:dir, grade:grade, s:+sc.toFixed(1), th:ICT.minScore });
   DIAG = { st:'signal' };
-  return { side:dir, entry:+entry.toFixed(2), eLo:+z.lo.toFixed(2), eHi:+z.hi.toFixed(2), sl:+sl.toFixed(2), slO:+(sl - sgn * 0.3 * atr).toFixed(2),
-    tp1:+tp1.toFixed(2), tp2:+tp2.toFixed(2), tp1n:tp1n, tp2n:tp2n, rr:+rr.toFixed(2), score:+sc.toFixed(1), why:why, kind:z.type, sess:ses.name,
-    sweepB:cs[sw.s].b, filled:filled, crt:crt ? { lo:+crt.lo.toFixed(2), hi:+crt.hi.toFixed(2) } : null };
+  return { side:dir, grade:grade, entry:+entry.toFixed(2), eLo:+z.lo.toFixed(2), eHi:+z.hi.toFixed(2), sl:+sl.toFixed(2), slO:+(sl - sgn * 0.3 * atr).toFixed(2),
+    tp1:+tp1.toFixed(2), tp2:+tp2.toFixed(2), tp1n:tp1n, tp2n:tp2n, rr:+rr2.toFixed(2), rr1:+rr1.toFixed(2), score:+sc.toFixed(1), why:why, kind:z.type, sess:ses.name,
+    sweepB:cs[sw.s].b, filled:filled, crt:crt ? { lo:+crt.lo.toFixed(2), hi:+crt.hi.toFixed(2) } : null, liq:nearLiq(pools, price), atr:+atr.toFixed(2) };
 }
 /*ENGINE_END*/
 
@@ -485,11 +524,6 @@ function analyze(x){
   }
   function hhmm(m){ return pad(Math.floor(m / 60)) + ':' + pad(m % 60); }
   function hmCairo(ts){ var o = cairoOff(ts), d = new Date(ts + o * 3600000); return pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()); }
-  function setSens(){
-    var m = { normal:{ minScore:8, rrMin:1.5, biasMin:2 }, high:{ minScore:6.5, rrMin:1.2, biasMin:1.5 }, max:{ minScore:5, rrMin:1.0, biasMin:1 } }[S.sens] || { minScore:6.5, rrMin:1.2, biasMin:1.5 };
-    ICT.minScore = m.minScore; ICT.rrMin = m.rrMin; ICT.biasMin = m.biasMin;
-  }
-
   /* ---------- candle store ---------- */
   function liveUpdate(p, now){
     TFS.forEach(function(tf){
@@ -551,11 +585,11 @@ function analyze(x){
 
   /* ---------- signals ---------- */
   var evalB = {}, DIAGS = {}, toastTimer = null, actx = null, wl = null, swReg = null;
-  function ctxFor(tf, price, now){
+  function ctxFor(price, now){
     function cl(t, k){ var a = S.candles[t], i = lb(a, Math.floor(now / (t * 1000))); return a.slice(Math.max(0, i - k), i); }
     function fm(t){ var a = S.candles[t], l = a[a.length-1]; return l && l.b === Math.floor(now / (t * 1000)) ? l : null; }
     var d = fm(86400);
-    return { cs:cl(tf, 150), h1:cl(3600, 120), h4:cl(14400, 120), d1:cl(86400, 120), curH1:fm(3600), curH4:fm(14400), dOpen:d ? d.o : null, price:price, now:now };
+    return { cs:cl(300, 150), m15:cl(900, 260), h1:cl(3600, 260), d1:cl(86400, 60), curH1:fm(3600), dOpen:d ? d.o : null, price:price, now:now };
   }
   function activeOn(tf){ return S.signals.some(function(s){ return s.tf === tf && (s.st === 'p' || s.st === 'o'); }); }
   function checkSignal(s, price, ts){
@@ -606,6 +640,34 @@ function analyze(x){
     });
     if (ch) save();
   }
+  var NEWS_URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json', NEWS_RE = /FOMC|Fed |Powell|Non-?Farm|Employment|CPI|PCE|PPI|Unemployment|GDP|Retail Sales|ISM|Jobless|Rate Decision/i;
+  function fetchNews(){
+    getJSON(NEWS_URL).then(function(rows){
+      if (!Array.isArray(rows)) throw new Error('shape');
+      var ev = [];
+      rows.forEach(function(r){
+        if (!r || !/^USD$/i.test(String(r.country || r.currency || ''))) return;
+        var imp = String(r.impact || '').toLowerCase(), t = Date.parse(r.date);
+        if (!isFinite(t)) return;
+        if (imp === 'high' || (imp === 'medium' && NEWS_RE.test(String(r.title || '')))) ev.push({ t:t, title:String(r.title || ''), imp:imp });
+      });
+      ev.sort(function(a, b){ return a.t - b.t; });
+      S.news = { ts:Date.now(), ev:ev }; save();
+    }).catch(function(){});
+  }
+  function newsState(now){
+    var n = S.news;
+    if (!n || !n.ev || now - n.ts > 12 * 3600000) return { avail:false };
+    var blocking = null, next = null;
+    for (var i = 0; i < n.ev.length; i++) {
+      var e = n.ev[i];
+      if (!blocking && now >= e.t - 30 * 60000 && now <= e.t + 15 * 60000) blocking = e;
+      if (!next && e.t > now) next = e;
+    }
+    return { avail:true, blocking:blocking, next:next };
+  }
+  function cairoStr(ts){ var o = cairoOff(ts), d = new Date(ts + o * 3600000); return pad(d.getUTCDate()) + '/' + pad(d.getUTCMonth() + 1) + ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()); }
+  function liqStr(a){ return a && a.length ? a.map(function(l){ return l.n + ' ' + fmt.format(l.p); }).join(' · ') : '—'; }
   function evaluateAll(price){
     var now = Date.now();
     if (!lastOkAt || now - lastOkAt > 5000) return;
@@ -613,19 +675,24 @@ function analyze(x){
       var ms = tf * 1000, curB = Math.floor(now / ms), first = evalB[tf] === undefined;
       if (!first && evalB[tf] === curB) return;
       evalB[tf] = curB;
-      var x = ctxFor(tf, price, now);
+      var ns = newsState(now);
+      if (marketTs && now - marketTs > 300000) { DIAGS[tf] = { st:'stale', at:now }; return; }
+      if (xchk && now - xchk.ts < 60000 && Math.abs(xchk.diff) > 1.5) { DIAGS[tf] = { st:'price', diff:xchk.diff, at:now }; return; }
+      var x = ctxFor(price, now);
       DIAG = null;
       var r = analyze(x);
       var dg = DIAG || { st:'none' }; dg.at = now; DIAGS[tf] = dg;
       if (activeOn(tf)) { dg.st = 'open'; return; }
       if (!r || first) return;
+      if (ns.blocking) { dg.st = 'news'; dg.title = ns.blocking.title; return; }
+      if (!ns.avail && S.newsStrict) { dg.st = 'newsx'; return; }
       if (S.signals.some(function(s){ return s.tf === tf && s.sweepB === r.sweepB && s.side === r.side; })) return;
-      var sig = { tf:tf, b:x.cs[x.cs.length-1].b, ts:now, side:r.side, entry:r.entry, eLo:r.eLo, eHi:r.eHi, sl:r.sl, slO:r.slO, tp1:r.tp1, tp2:r.tp2,
-        tp1n:r.tp1n, tp2n:r.tp2n, rr:r.rr, score:r.score, why:r.why, kind:r.kind, sess:r.sess, sweepB:r.sweepB, crt:r.crt,
-        st:r.filled ? 'o' : 'p', ft:r.filled ? now : 0, ct:0 };
+      var sig = { tf:tf, b:x.cs[x.cs.length-1].b, ts:now, side:r.side, grade:r.grade, entry:r.entry, eLo:r.eLo, eHi:r.eHi, sl:r.sl, slO:r.slO, tp1:r.tp1, tp2:r.tp2,
+        tp1n:r.tp1n, tp2n:r.tp2n, rr:r.rr, score:r.score, why:r.why, kind:r.kind, sweepB:r.sweepB, crt:r.crt, liqUp:r.liq.up, liqDn:r.liq.dn,
+        news:ns.avail ? 'clear' : 'unchecked', st:r.filled ? 'o' : 'p', ft:r.filled ? now : 0, ct:0, px:price };
       S.signals.push(sig);
-      if (S.signals.length > 120) S.signals.shift();
-      save(); announce(sig, 'new');
+      if (S.signals.length > 300) S.signals.shift();
+      save(); announce(sig, 'new'); renderLog();
     });
   }
 
@@ -645,9 +712,19 @@ function analyze(x){
     var t = $('toast'); t.textContent = text; t.className = 'toast ' + (side || ''); t.hidden = false;
     clearTimeout(toastTimer); toastTimer = setTimeout(function(){ t.hidden = true; }, 25000);
   }
-  function sigText(s){
-    return (s.side === 'buy' ? 'شراء' : 'بيع') + ' ذهب · ' + TFLBL[s.tf] + ' · ' + (s.st === 'p' ? 'أمر معلّق' : 'دخول') + ' ' + fmt.format(s.entry) +
-      ' · SL ' + fmt.format(s.sl) + ' · TP1 ' + fmt.format(s.tp1) + ' · TP2 ' + fmt.format(s.tp2) + ' · قوة ' + s.score;
+  function alertText(s){
+    return '🚨 XAUUSD TRADE ALERT · ' + s.grade + '\n' +
+      'Time: ' + cairoStr(s.ts) + ' (Cairo)\n' +
+      'Current Price: ' + fmt.format(s.px || s.entry) + '\n' +
+      'Direction: ' + s.side.toUpperCase() + (s.st === 'p' ? ' (limit order)' : '') + '\n' +
+      'Entry Zone: ' + fmt.format(s.eLo) + ' – ' + fmt.format(s.eHi) + (s.st === 'p' ? ' · limit @ ' + fmt.format(s.entry) : '') + '\n' +
+      'Stop Loss: ' + fmt.format(s.sl) + '\n' +
+      'Take Profit 1: ' + fmt.format(s.tp1) + ' (' + s.tp1n + ')\n' +
+      'Take Profit 2: ' + fmt.format(s.tp2) + ' (' + s.tp2n + ') · R:R 1:' + s.rr + '\n' +
+      'Liquidity above: ' + liqStr(s.liqUp) + '\n' +
+      'Liquidity below: ' + liqStr(s.liqDn) + '\n' +
+      'Why: ' + s.why.join(' + ') + '\n' +
+      'News: ' + (s.news === 'clear' ? 'no high-impact USD event nearby' : '⚠ calendar not verified');
   }
   function pushNote(title, body, tag){
     try {
@@ -661,20 +738,21 @@ function analyze(x){
     }
   }
   function announce(s, kind){
-    var en = s.side.toUpperCase() + ' XAUUSD ' + TFEN[s.tf];
+    var en = 'XAUUSD ' + s.side.toUpperCase() + ' ' + s.grade + ' M5';
     if (kind === 'new') {
-      showToast(en + ' — ' + sigText(s), s.side);
+      showToast(alertText(s), s.side);
       if (!S.notify) return;
       beep(); try { if (navigator.vibrate) navigator.vibrate([250, 120, 250, 120, 400]); } catch(e) {}
-      pushNote(en + ' SETUP', sigText(s), 'gold-' + s.tf);
+      pushNote(en, alertText(s), 'gold-new');
     } else if (kind === 'fill') {
       showToast('تم الدخول: ' + en + ' عند ' + fmt.format(s.entry) + ' · SL ' + fmt.format(s.sl) + ' · TP1 ' + fmt.format(s.tp1), s.side);
       if (!S.notify || !S.notifyFill) return;
-      beep(); pushNote(en + ' ENTRY', 'وصل السعر منطقة الدخول ' + fmt.format(s.entry) + ' · SL ' + fmt.format(s.sl) + ' · TP1 ' + fmt.format(s.tp1), 'gold-fill-' + s.tf);
+      beep(); pushNote(en + ' ENTRY', 'Price reached the entry zone ' + fmt.format(s.entry) + ' · SL ' + fmt.format(s.sl) + ' · TP1 ' + fmt.format(s.tp1), 'gold-fill');
     } else {
       showToast((kind === 'tp' ? '✓ تحقق الهدف الأول: ' : '✗ ضُرب الوقف: ') + en, kind === 'tp' ? s.side : '');
-      if (S.notify && S.notifyFill) pushNote(en + (kind === 'tp' ? ' TP1 hit' : ' SL hit'), kind === 'tp' ? 'تحقق الهدف الأول ' + fmt.format(s.tp1) : 'ضُرب الوقف ' + fmt.format(s.sl), 'gold-res-' + s.tf);
+      if (S.notify && S.notifyFill) pushNote(en + (kind === 'tp' ? ' TP1 hit' : ' SL hit'), kind === 'tp' ? 'TP1 hit ' + fmt.format(s.tp1) : 'Stop loss hit ' + fmt.format(s.sl), 'gold-res');
     }
+    renderLog();
   }
   function lockScreen(){
     try { if (S.notify && navigator.wakeLock && !document.hidden) navigator.wakeLock.request('screen').then(function(l){ wl = l; }).catch(function(){}); } catch(e) {}
@@ -703,10 +781,10 @@ function analyze(x){
     if (tf >= 3600) return pad(d.getDate()) + '/' + pad(d.getMonth()+1) + ' ' + hm(ts);
     return hm(ts);
   }
-  function poolsForView(tf, now){
-    var k = tf + ':' + Math.floor(now / 10000);
+  function poolsForView(now){
+    var k = Math.floor(now / 10000);
     if (poolCache.k === k) return poolCache.v;
-    var x = ctxFor(tf, oz, now), atr = x.cs.length > 15 ? atrAvg(x.cs, 14) : 0, v = [];
+    var x = ctxFor(oz, now), atr = x.cs.length > 15 ? atrAvg(x.cs, 14) : 0, v = [];
     if (atr > 0) { try { v = buildPools(x, atr); } catch(e) { v = []; } }
     poolCache = { k:k, v:v };
     return v;
@@ -727,7 +805,8 @@ function analyze(x){
     if (!vc.length) { svg.innerHTML = ''; return; }
 
     var vis = S.signals.filter(function(s){
-      return s.tf === S.tf && s.b <= rightB && ((s.st === 'p' || s.st === 'o') || Math.floor(s.ct / ms) >= firstB);
+      s.sb = Math.floor(((s.b + 1) * s.tf * 1000 - 1) / ms);
+      return s.sb <= rightB && ((s.st === 'p' || s.st === 'o') || Math.floor(s.ct / ms) >= firstB);
     });
     var min = Infinity, max = -Infinity;
     vc.forEach(function(c){ if (c.l < min) min = c.l; if (c.h > max) max = c.h; });
@@ -770,7 +849,7 @@ function analyze(x){
       }
     }
     /* liquidity pools */
-    var pools = poolsForView(S.tf, now).filter(function(p){ return inR(p.p); });
+    var pools = poolsForView(now).filter(function(p){ return inR(p.p); });
     pools.sort(function(p, q){ return q.w - p.w; });
     var usedY = [];
     pools.slice(0, 14).forEach(function(p){
@@ -782,7 +861,7 @@ function analyze(x){
     /* signal zones + levels (under candles) */
     var labels = '';
     vis.forEach(function(s){
-      var act = s.st === 'p' || s.st === 'o', x0 = Math.max(0, X(s.b)), cb = Math.floor(s.ct / ms);
+      var act = s.st === 'p' || s.st === 'o', x0 = Math.max(0, X(s.sb)), cb = Math.floor(s.ct / ms);
       var x1 = act ? CW : Math.min(CW, Math.max(x0 + slot, X(cb)));
       var op = act ? 1 : 0.5, buy = s.side === 'buy';
       var yE = Y(s.entry), yS = Y(s.sl), yT1 = Y(s.tp1), yT2 = Y(s.tp2);
@@ -822,16 +901,16 @@ function analyze(x){
     /* arrows */
     var byB = {}; vc.forEach(function(c){ byB[c.b] = c; });
     vis.forEach(function(s){
-      var c = byB[s.b]; if (!c) return;
-      var xc = X(s.b);
+      var c = byB[s.sb]; if (!c) return;
+      var xc = X(s.sb), ta = xc > CW - 26 ? 'end' : 'middle', tx2 = ta === 'end' ? xc + 8 : xc;
       if (s.side === 'buy') {
         var y0 = Y(c.l) + 5;
         out += '<polygon points="'+xc.toFixed(1)+','+y0+' '+(xc-5).toFixed(1)+','+(y0+9)+' '+(xc+5).toFixed(1)+','+(y0+9)+'" style="fill:var(--up)"/>';
-        out += '<text x="'+xc.toFixed(1)+'" y="'+(y0+20)+'" text-anchor="middle" font-size="9.5" font-weight="600" style="fill:var(--up)">buy</text>';
+        out += '<text x="'+tx2.toFixed(1)+'" y="'+(y0+20)+'" text-anchor="'+ta+'" font-size="9.5" font-weight="600" style="fill:var(--up)">buy '+s.grade+'</text>';
       } else {
         var y1 = Y(c.h) - 5;
         out += '<polygon points="'+xc.toFixed(1)+','+y1+' '+(xc-5).toFixed(1)+','+(y1-9)+' '+(xc+5).toFixed(1)+','+(y1-9)+'" style="fill:var(--down)"/>';
-        out += '<text x="'+xc.toFixed(1)+'" y="'+(y1-12)+'" text-anchor="middle" font-size="9.5" font-weight="600" style="fill:var(--down)">sell</text>';
+        out += '<text x="'+tx2.toFixed(1)+'" y="'+(y1-12)+'" text-anchor="'+ta+'" font-size="9.5" font-weight="600" style="fill:var(--down)">sell '+s.grade+'</text>';
       }
     });
     /* last price */
@@ -856,16 +935,16 @@ function analyze(x){
     function v(x){ return fmt.format(x); }
     var h = '<span class="sym">XAUUSD · ' + TFEN[S.tf] + '</span> <span class="' + (up ? 'gb' : 'gs') + '">O ' + v(c.o) + ' H ' + v(c.h) + ' L ' + v(c.l) + ' C ' + v(c.c) + ' (' + (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%)</span>';
     if (isCur) {
-      var sg = null; S.signals.forEach(function(s){ if (s.tf === S.tf && s.b === c.b) sg = s; });
+      var sg = null; S.signals.forEach(function(s){ if (s.sb === c.b) sg = s; });
       h += ' <span class="tm">' + timeLabel(c.t, S.tf) + '</span>';
-      if (sg) h += '<br><b class="' + (sg.side === 'buy' ? 'gb' : 'gs') + '">' + sg.side.toUpperCase() + (sg.st === 'p' ? ' (limit)' : '') + '</b> entry ' + v(sg.eLo) + '–' + v(sg.eHi) + ' · sl ' + v(sg.sl) + ' · tp1 ' + v(sg.tp1) + ' (' + sg.tp1n + ') · tp2 ' + v(sg.tp2) + ' · R:R ' + sg.rr + ' · score ' + sg.score + '<br>' + sg.why.join(' + ');
+      if (sg) h += '<br><b class="' + (sg.side === 'buy' ? 'gb' : 'gs') + '">' + sg.side.toUpperCase() + ' ' + sg.grade + (sg.st === 'p' ? ' (limit)' : '') + '</b> entry ' + v(sg.eLo) + '–' + v(sg.eHi) + ' · sl ' + v(sg.sl) + ' · tp1 ' + v(sg.tp1) + ' (' + sg.tp1n + ') · tp2 ' + v(sg.tp2) + ' · R:R 1:' + sg.rr + ' · score ' + sg.score + '<br>' + sg.why.join(' + ');
     }
     $('legend').innerHTML = h;
   }
   function renderStats(){
-    var w = 0, l = 0, o = 0, p = 0;
-    S.signals.forEach(function(s){ if (SIGTFS.indexOf(S.tf) >= 0 && s.tf !== S.tf) return; if (s.st === 'tp') w++; else if (s.st === 'sl') l++; else if (s.st === 'o') o++; else if (s.st === 'p') p++; });
-    var t = 'الإشارات' + (SIGTFS.indexOf(S.tf) >= 0 ? ' (' + TFLBL[S.tf] + ')' : '') + ': ✓ ' + w + ' · ✗ ' + l + ' · نشطة ' + o + ' · معلّقة ' + p;
+    var w = 0, l = 0, o = 0, p = 0, x = 0;
+    S.signals.forEach(function(s){ if (s.st === 'tp') w++; else if (s.st === 'sl') l++; else if (s.st === 'o') o++; else if (s.st === 'p') p++; else x++; });
+    var t = 'نتائج الإشارات: ✓ ' + w + ' · ✗ ' + l + ' · نشطة ' + o + ' · معلّقة ' + p + ' · ملغاة ' + x;
     if (w + l >= 5) t += ' · نجاح ' + Math.round(w / (w + l) * 100) + '%';
     $('stats').textContent = t + ' · آلية وليست نصيحة استثمارية';
   }
@@ -875,27 +954,52 @@ function analyze(x){
     if (ses) t = 'نافذة الإشارات مفتوحة (' + wl + ') · تنتهي ' + hmCairo(ses.end) + ' (بعد ' + durText(ses.end - now) + ')';
     else { var nw = nextWindow(now); t = 'خارج نافذة الإشارات (' + wl + ') · لا إشارات الآن' + (nw ? ' · تبدأ ' + hmCairo(nw.start) + ' بتوقيت القاهرة (بعد ' + durText(nw.start - now) + ')' : ''); }
     $('sess').textContent = t;
-    var tf = SIGTFS.indexOf(S.tf) >= 0 ? S.tf : 300, g = DIAGS[tf], d;
-    if (!g) { $('diag').textContent = 'تحليل ' + TFLBL[tf] + ': ينتظر أول إغلاق شمعة…'; return; }
-    var dr = g.dir === 'buy' ? 'شراء' : 'بيع';
-    switch (g.st) {
-      case 'data': d = 'بيانات غير كافية (' + (g.n || 0) + ' من 60 شمعة)'; break;
-      case 'session': d = 'خارج نافذة الإشارات'; break;
-      case 'flat': d = 'السعر شبه ثابت (سوق مقفل أو هادئ)'; break;
-      case 'gap': d = 'بيانات ناقصة بسبب انقطاع الصفحة، تتعافى تلقائيًا'; break;
-      case 'htf': d = 'يحتاج تاريخ فريمات الساعة و4س واليومي (يأتي من بينانس)' + (histOk === false ? ' وهو غير متاح الآن' : ''); break;
-      case 'bias': d = 'الاتجاه العام (يومي/4س/ساعة) غير واضح، فلا صفقات'; break;
-      case 'sweep': d = 'الاتجاه العام ' + dr + ' · ينتظر سحب سيولة ثم رجوع'; break;
-      case 'mss': d = 'تم سحب سيولة (' + g.pool + ') · ينتظر كسر هيكل MSS بقوة'; break;
-      case 'zone': d = 'لا توجد منطقة دخول FVG/OB صالحة بعد الكسر'; break;
-      case 'risk': d = 'الوقف بعيد جدًا فتجاهلت الفرصة'; break;
-      case 'rr': d = 'العائد للمخاطرة أقل من المطلوب'; break;
-      case 'score': d = 'فرصة ' + dr + ' نقاطها ' + g.s + ' من ' + g.th + ' المطلوبة'; break;
-      case 'open': d = 'توجد صفقة نشطة أو معلّقة في هذا الفريم'; break;
-      case 'signal': d = 'صدرت إشارة في آخر شمعة'; break;
-      default: d = 'لا فرصة في آخر شمعة';
+    var g = DIAGS[300], d;
+    if (!g) d = 'تحليل M5: ينتظر أول إغلاق شمعة…';
+    else {
+      var dr = g.dir === 'buy' ? 'شراء' : 'بيع';
+      switch (g.st) {
+        case 'data': d = 'بيانات غير كافية (' + (g.n || 0) + ' من 60 شمعة)'; break;
+        case 'session': d = 'خارج نافذة الإشارات'; break;
+        case 'flat': d = 'السعر شبه ثابت (سوق مقفل أو هادئ)'; break;
+        case 'gap': d = 'بيانات ناقصة بسبب انقطاع الصفحة، تتعافى تلقائيًا'; break;
+        case 'stale': d = 'السعر غير محدّث (قد يكون السوق مقفلًا)، لا إشارات'; break;
+        case 'price': d = 'فرق السعر بين المصدرين ' + Math.abs(g.diff).toFixed(2) + '$ فالبيانات غير مؤكدة، لا إشارات'; break;
+        case 'htf': d = 'يحتاج تاريخ H1 (200 شمعة على الأقل) من بينانس' + (histOk === false ? ' وهو غير متاح الآن' : ''); break;
+        case 'bias': d = 'لا اتجاه واضح على H1 (EMA50 مقابل EMA200)، فلا صفقات'; break;
+        case 'sweep': d = 'اتجاه H1 ' + dr + ' · ينتظر سحب سيولة ثم رجوع على M5'; break;
+        case 'mss': d = 'تم سحب سيولة (' + g.pool + ') · ينتظر كسر هيكل MSS بقوة'; break;
+        case 'zone': d = 'لا توجد منطقة دخول FVG/OB صالحة بعد الكسر'; break;
+        case 'risk': d = 'وقف الخسارة بعيد جدًا فتجاهلت الفرصة'; break;
+        case 'target': d = 'لا يوجد هدف سيولة واضح بعد منطقة الدخول'; break;
+        case 'rr': d = 'العائد للمخاطرة أقل من 1:2'; break;
+        case 'watch': d = 'فرصة ' + g.grade + ' (' + g.s + ' من ' + g.th + ' للدخول) تحت المراقبة فقط، لا دخول'; break;
+        case 'news': d = 'خبر قوي قريب (' + g.title + ')، تم إيقاف الإشارات حتى يمر'; break;
+        case 'newsx': d = 'تعذّر التحقق من الأخبار والوضع الصارم مفعّل، لا إشارات'; break;
+        case 'open': d = 'توجد صفقة نشطة أو معلّقة'; break;
+        case 'signal': d = 'صدرت إشارة في آخر شمعة'; break;
+        default: d = 'لا فرصة في آخر شمعة';
+      }
+      d = 'تحليل M5: ' + d + ' · ' + ageText(Math.round((now - g.at) / 1000));
     }
-    $('diag').textContent = 'تحليل ' + TFLBL[tf] + ': ' + d + ' · ' + ageText(Math.round((now - g.at) / 1000));
+    $('diag').textContent = d;
+    var nl = nearLiq(poolsForView(now), oz || 0);
+    $('liq').textContent = 'أقرب سيولة فوق السعر: ' + liqStr(nl.up.slice(0, 2)) + ' | تحت السعر: ' + liqStr(nl.dn.slice(0, 2));
+    var ns = newsState(now);
+    $('news').textContent = ns.avail ? 'الأخبار: التقويم محمّل' + (ns.next ? ' · القادم: ' + ns.next.title + ' ' + cairoStr(ns.next.t) + ' بتوقيت القاهرة' : ' · لا أخبار قوية متبقية هذا الأسبوع') : '⚠ الأخبار: تعذّر تحميل التقويم الاقتصادي، ' + (S.newsStrict ? 'الإشارات متوقفة (الوضع الصارم)' : 'الإشارات تحمل تحذيرًا');
+  }
+  var logAt = 0;
+  function renderLog(){
+    var rows = S.signals.slice().reverse().slice(0, 40), nm = { tp:'✓ TP1', sl:'✗ SL', x:'ملغاة', p:'معلّقة', o:'نشطة' };
+    var h = '<table><thead><tr><th>الوقت</th><th>الاتجاه</th><th>الدرجة</th><th>دخول</th><th>SL</th><th>TP1</th><th>النتيجة</th></tr></thead><tbody>';
+    rows.forEach(function(s){ h += '<tr><td class="num">' + cairoStr(s.ts) + '</td><td>' + s.side.toUpperCase() + '</td><td>' + s.grade + '</td><td class="num">' + fmt.format(s.entry) + '</td><td class="num">' + fmt.format(s.sl) + '</td><td class="num">' + fmt.format(s.tp1) + '</td><td>' + (nm[s.st] || s.st) + '</td></tr>'; });
+    $('logBody').innerHTML = rows.length ? h + '</tbody></table>' : 'لا توجد إشارات بعد.';
+  }
+  function copyLog(){
+    var csv = 'time_cairo,side,grade,entry_low,entry_high,limit_entry,sl,tp1,tp2,rr,score,result,why\n' + S.signals.map(function(s){
+      return [cairoStr(s.ts), s.side, s.grade, s.eLo, s.eHi, s.entry, s.sl, s.tp1, s.tp2, s.rr, s.score, s.st, '"' + s.why.join(' + ') + '"'].join(',');
+    }).join('\n');
+    try { navigator.clipboard.writeText(csv).then(function(){ showToast('تم نسخ السجل (CSV)', ''); }).catch(function(){ showToast('تعذّر النسخ', ''); }); } catch(e) { showToast('تعذّر النسخ', ''); }
   }
 
   /* ---------- gestures: pan / pinch / price-axis / wheel ---------- */
@@ -961,7 +1065,7 @@ function analyze(x){
   var tfBtns = document.querySelectorAll('.tfs button');
   tfBtns.forEach(function(b){
     b.addEventListener('click', function(){
-      S.tf = parseInt(b.getAttribute('data-tf'), 10); V.off = 0; V.ym = false; cur = null; pinned = false; poolCache.k = ''; save(); syncTf(); draw();
+      S.tf = parseInt(b.getAttribute('data-tf'), 10); V.off = 0; V.ym = false; cur = null; pinned = false; poolCache.k = -1; save(); syncTf(); draw();
     });
   });
   function syncTf(){ tfBtns.forEach(function(b){ b.setAttribute('aria-pressed', parseInt(b.getAttribute('data-tf'), 10) === S.tf); }); }
@@ -995,7 +1099,10 @@ function analyze(x){
   function fetchPrice(){
     if (inFlight) return Promise.resolve();
     inFlight = true;
-    return fromOanda().catch(function(){ return fromGoldApi(); })
+    return fromOanda().then(function(r){
+      if (Date.now() - lastAlt > 10000) { lastAlt = Date.now(); fromGoldApi().then(function(a){ xchk = { diff:r.p - a.p, ts:Date.now() }; }).catch(function(){}); }
+      return r;
+    }, function(){ xchk = null; return fromGoldApi(); })
       .then(function(r){
         var first = !lastOkAt;
         failures = 0; lastOkAt = Date.now(); srcName = r.src;
@@ -1024,7 +1131,7 @@ function analyze(x){
     if (!lastOkAt) dot.className = failures ? 'dot off' : 'dot';
     else dot.className = (Date.now() - lastOkAt <= 10000) ? 'dot live' : 'dot off';
     dot.title = 'مصدر السعر: ' + srcName;
-    $('src').textContent = 'مصدر السعر: ' + srcName + (histOk === false ? ' · تاريخ الفريمات الكبيرة غير متاح' : '');
+    $('src').textContent = 'مصدر السعر: ' + srcName + (xchk && Date.now() - xchk.ts < 60000 ? ' · فرق OANDA/gold-api ' + xchk.diff.toFixed(2) + '$' : '') + (histOk === false ? ' · تاريخ الفريمات الكبيرة غير متاح' : '');
     if (failures >= 2) {
       banner.hidden = false;
       banner.textContent = oz ? 'تعذر جلب السعر. تُعرض آخر بيانات محفوظة ولا تصدر إشارات جديدة.' : 'تعذر جلب السعر. تأكد من الاتصال بالإنترنت.';
@@ -1108,14 +1215,10 @@ function analyze(x){
   }
 
   /* ---------- settings ---------- */
-  function syncSettings(){
-    ['Normal:normal', 'High:high', 'Max:max'].forEach(function(x){ var kv = x.split(':'); $('sens' + kv[0]).setAttribute('aria-pressed', S.sens === kv[1]); });
-    $('notifyFill').checked = !!S.notifyFill;
-  }
-  ['Normal:normal', 'High:high', 'Max:max'].forEach(function(x){
-    var kv = x.split(':'); $('sens' + kv[0]).addEventListener('click', function(){ S.sens = kv[1]; setSens(); syncSettings(); save(); });
-  });
+  function syncSettings(){ $('notifyFill').checked = !!S.notifyFill; $('newsStrict').checked = !!S.newsStrict; }
   $('notifyFill').addEventListener('change', function(){ S.notifyFill = this.checked; save(); });
+  $('newsStrict').addEventListener('change', function(){ S.newsStrict = this.checked; save(); });
+  $('logCopy').addEventListener('click', copyLog);
   $('ntfyApply').addEventListener('click', function(){
     S.ntfy = $('ntfyTopic').value.trim().replace(/[^A-Za-z0-9_-]/g, ''); $('ntfyTopic').value = S.ntfy; save();
     showToast(S.ntfy ? 'تم حفظ قناة ntfy: ' + S.ntfy : 'تم إيقاف ntfy', '');
@@ -1138,7 +1241,7 @@ function analyze(x){
   });
   $('oandaApply').addEventListener('click', function(){
     S.oanda = { id:$('oandaId').value.trim(), token:$('oandaToken').value.trim(), env:$('oandaEnv').value === 'live' ? 'live' : 'practice' };
-    save(); showToast(S.oanda.id && S.oanda.token ? 'تم حفظ حساب OANDA على هذا الجهاز فقط. سيُجرَّب كمصدر أول للسعر، وإن تعذّر يُستخدم gold-api.' : 'تم إيقاف OANDA', '');
+    save(); showToast(S.oanda.id && S.oanda.token ? 'تم حفظ حساب OANDA على هذا الجهاز فقط. سيُجرَّب كمصدر أول للسعر ويُقارن بـ gold-api، وإن تعذّر يُستخدم gold-api.' : 'تم إيقاف OANDA', '');
     failures = 0; fetchPrice();
   });
   var deferred = null;
@@ -1151,11 +1254,12 @@ function analyze(x){
   $('ntfyTopic').value = S.ntfy; $('sentUrl').value = S.sentUrl; $('pipUsd').value = S.pipUsd;
   $('oandaId').value = S.oanda.id || ''; $('oandaToken').value = S.oanda.token || ''; $('oandaEnv').value = S.oanda.env || 'practice';
   if (S.candles[60].length) oz = S.candles[60][S.candles[60].length-1].c;
-  setWin(); $('winFrom').value = S.winFrom; $('winTo').value = S.winTo; setSens(); syncSettings(); replayOpen(); syncTf(); syncBell(); draw(); renderSent(); renderStatus(); renderDiag(); renderCot(); lockScreen();
+  setWin(); $('winFrom').value = S.winFrom; $('winTo').value = S.winTo; syncSettings(); replayOpen(); syncTf(); syncBell(); draw(); renderSent(); renderStatus(); renderDiag(); renderCot(); renderLog(); lockScreen();
   setInterval(function(){ renderStatus(); renderSent(); renderDiag(); }, 1000);
   fetchPrice().then(schedule);
   fetchSent(); setInterval(fetchSent, SENT_MS);
   fetchCot(); setInterval(fetchCot, COT_MS);
+  fetchNews(); setInterval(fetchNews, 30 * 60000);
 })();
 </script>
 </body>
