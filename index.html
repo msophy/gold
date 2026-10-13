@@ -126,6 +126,10 @@ input[type=number]{flex:1;min-width:0;color:var(--ink);background:var(--bg);bord
     <details>
       <summary>الإعدادات والتنبيهات والتثبيت</summary>
       <div class="field">
+        <label class="f">وقت إرسال الإشارات بتوقيت القاهرة (من ساعة إلى ساعة، الاثنين–الجمعة)</label>
+        <div class="row"><input type="number" id="winFrom" inputmode="decimal" min="0" max="23" step="0.5" aria-label="من الساعة"><input type="number" id="winTo" inputmode="decimal" min="1" max="24" step="0.5" aria-label="إلى الساعة"><button class="ghost" id="winApply">حفظ</button></div>
+      </div>
+      <div class="field">
         <label class="f">حساسية الإشارات (كلما زادت زادت الإشارات وقلّت جودتها)</label>
         <div class="row"><button class="ghost" id="sensNormal">عادية</button><button class="ghost" id="sensHigh">عالية</button><button class="ghost" id="sensMax">قصوى</button></div>
       </div>
@@ -170,14 +174,14 @@ input[type=number]{flex:1;min-width:0;color:var(--ink);background:var(--bg);bord
   var cmp = new Intl.NumberFormat('en-US', { notation:'compact', maximumFractionDigits:1 });
   var int0 = new Intl.NumberFormat('en-US', { maximumFractionDigits:0 });
 
-  var S = { tf:300, sens:'high', notify:false, notifyFill:true, ntfy:'', sentUrl:'', sentExt:null, sentTs:0, pipUsd:0.10,
+  var S = { tf:300, sens:'high', winFrom:1, winTo:14, notify:false, notifyFill:true, ntfy:'', sentUrl:'', sentExt:null, sentTs:0, pipUsd:0.10,
             oanda:{ id:'', token:'', env:'practice' }, cot:null, candles:{}, signals:[] };
   TFS.forEach(function(t){ S.candles[t] = []; });
   try {
     var raw = localStorage.getItem(KEY);
     if (raw) {
       var P = JSON.parse(raw);
-      ['tf','sens','notify','notifyFill','ntfy','sentUrl','sentExt','sentTs','pipUsd','oanda','cot'].forEach(function(k){ if (P[k] !== undefined) S[k] = P[k]; });
+      ['tf','sens','winFrom','winTo','notify','notifyFill','ntfy','sentUrl','sentExt','sentTs','pipUsd','oanda','cot'].forEach(function(k){ if (P[k] !== undefined) S[k] = P[k]; });
       if (Array.isArray(P.signals)) S.signals = P.signals.filter(function(s){ return s && s.ts > Date.now() - 3 * 86400000; }).slice(-120);
       if (P.candles) TFS.forEach(function(t){
         if (Array.isArray(P.candles[t])) S.candles[t] = P.candles[t].map(function(a){ return { b:a[0], t:a[0]*t*1000, o:a[1], h:a[2], l:a[3], c:a[4] }; });
@@ -189,7 +193,7 @@ input[type=number]{flex:1;min-width:0;color:var(--ink);background:var(--bg);bord
   var lastSaveAt = 0;
   function save(){
     try {
-      var o = { tf:S.tf, sens:S.sens, notify:S.notify, notifyFill:S.notifyFill, ntfy:S.ntfy, sentUrl:S.sentUrl, sentExt:S.sentExt, sentTs:S.sentTs, pipUsd:S.pipUsd, oanda:S.oanda, cot:S.cot, signals:S.signals, candles:{} };
+      var o = { tf:S.tf, sens:S.sens, winFrom:S.winFrom, winTo:S.winTo, notify:S.notify, notifyFill:S.notifyFill, ntfy:S.ntfy, sentUrl:S.sentUrl, sentExt:S.sentExt, sentTs:S.sentTs, pipUsd:S.pipUsd, oanda:S.oanda, cot:S.cot, signals:S.signals, candles:{} };
       TFS.forEach(function(t){ o.candles[t] = S.candles[t].slice(-400).map(function(c){ return [c.b, c.o, c.h, c.l, c.c]; }); });
       localStorage.setItem(KEY, JSON.stringify(o));
       lastSaveAt = Date.now();
@@ -253,14 +257,35 @@ function londonOff(ts){
 }
 function utcDay(ts){ return Math.floor(ts / 86400000); }
 function weekdayOf(ts){ return (utcDay(ts) + 3) % 7; }            /* Mon = 0 ... Sun = 6 */
-/* Asia open = Tokyo 09:00-11:00 JST (00:00-02:00 UTC). Europe open = London 08:00-11:00 local. */
+/* Signals window in Cairo local time (default 01:00 - 14:00, Mon-Fri). Egypt DST handled through Intl with an analytic fallback. */
+var WIN = { from:60, to:840 }, cairoCache = {}, cairoFmt = null;
+function lastDow(y, m, dow){ var d = new Date(Date.UTC(y, m + 1, 0)); return d.getUTCDate() - ((d.getUTCDay() - dow + 7) % 7); }
+function cairoOff(ts){
+  var k = Math.floor(ts / 3600000);
+  if (cairoCache[k] !== undefined) return cairoCache[k];
+  var off;
+  try {
+    if (!cairoFmt) cairoFmt = new Intl.DateTimeFormat('en-US', { timeZone:'Africa/Cairo', hourCycle:'h23', year:'numeric', month:'numeric', day:'numeric', hour:'numeric', minute:'numeric' });
+    var p = {}; cairoFmt.formatToParts(new Date(ts)).forEach(function(x){ p[x.type] = +x.value; });
+    off = Math.round((Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute) - Math.floor(ts / 60000) * 60000) / 3600000);
+  } catch (err) {
+    var y = new Date(ts).getUTCFullYear(), s = Date.UTC(y, 3, lastDow(y, 3, 5)) - 2 * 3600000, en = Date.UTC(y, 9, lastDow(y, 9, 4) + 1) - 3 * 3600000;
+    off = ts >= s && ts < en ? 3 : 2;
+  }
+  cairoCache[k] = off;
+  return off;
+}
+function nearOpen(ts){
+  var m = (ts - utcDay(ts) * 86400000) / 60000, lo = 480 - londonOff(ts) * 60;
+  return (m >= 0 && m < 90) || (m >= lo && m < lo + 90);
+}
 function sessionAt(ts){
-  if (weekdayOf(ts) > 4) return null;
-  var ds = utcDay(ts) * 86400000, m = (ts - ds) / 60000;
-  if (m < 120) return { name:'asia', start:ds, end:ds + 120 * 60000 };
-  var off = londonOff(ts) * 60, s = 480 - off, e = 660 - off;
-  if (m >= s && m < e) return { name:'london', start:ds + s * 60000, end:ds + e * 60000 };
-  return null;
+  var off = cairoOff(ts), lt = ts + off * 3600000;
+  if (weekdayOf(lt) > 4) return null;
+  var ds = utcDay(lt) * 86400000, m = (lt - ds) / 60000;
+  if (m < WIN.from || m >= WIN.to) return null;
+  var base = ds - off * 3600000;
+  return { name:'window', start:base + WIN.from * 60000, end:base + WIN.to * 60000 };
 }
 function nextWindow(ts){
   for (var t = ts, i = 0; i < 12 * 24 * 6; i++, t += 300000) { var s = sessionAt(t); if (s) return s; }
@@ -443,7 +468,7 @@ function analyze(x){
   if (hh > ll) { var eq = (hh + ll) / 2; if (buy ? entry < eq : entry > eq) { sc += 1; why.push(buy ? 'Discount' : 'Premium'); } }
   if (x.dOpen != null && (buy ? entry < x.dOpen : entry > x.dOpen)) { sc += 0.5; why.push(buy ? 'Below Daily Open' : 'Above Daily Open'); }
   sc += Math.min(2, Math.abs(bias.score) * 0.5); why.push('Bias ' + (buy ? '+' : '') + bias.score);
-  if (now - ses.start <= 90 * 60000) { sc += 0.5; why.push('Session open'); }
+  if (nearOpen(now)) { sc += 0.5; why.push('Session open'); }
   if (sc < ICT.minScore) return fail({ st:'score', dir:dir, s:+sc.toFixed(1), th:ICT.minScore });
   DIAG = { st:'signal' };
   return { side:dir, entry:+entry.toFixed(2), eLo:+z.lo.toFixed(2), eHi:+z.hi.toFixed(2), sl:+sl.toFixed(2), slO:+(sl - sgn * 0.3 * atr).toFixed(2),
@@ -453,6 +478,13 @@ function analyze(x){
 /*ENGINE_END*/
 
 
+  function setWin(){
+    var f = Number(S.winFrom), t = Number(S.winTo);
+    if (!(f >= 0 && t <= 24 && f < t)) { f = 1; t = 14; S.winFrom = f; S.winTo = t; }
+    WIN.from = Math.round(f * 60); WIN.to = Math.round(t * 60);
+  }
+  function hhmm(m){ return pad(Math.floor(m / 60)) + ':' + pad(m % 60); }
+  function hmCairo(ts){ var o = cairoOff(ts), d = new Date(ts + o * 3600000); return pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()); }
   function setSens(){
     var m = { normal:{ minScore:8, rrMin:1.5, biasMin:2 }, high:{ minScore:6.5, rrMin:1.2, biasMin:1.5 }, max:{ minScore:5, rrMin:1.0, biasMin:1 } }[S.sens] || { minScore:6.5, rrMin:1.2, biasMin:1.5 };
     ICT.minScore = m.minScore; ICT.rrMin = m.rrMin; ICT.biasMin = m.biasMin;
@@ -730,8 +762,8 @@ function analyze(x){
       for (k = firstB; k <= rightB + 1; k++) {
         var ss = k <= rightB ? sessionAt(k * ms) : null, nm = ss ? ss.name : null;
         if (run && run.nm !== nm) {
-          out += '<rect x="'+((run.s - firstB) * slot).toFixed(1)+'" y="'+top+'" width="'+((k - run.s) * slot).toFixed(1)+'" height="'+(bot - top)+'" style="fill:'+(run.nm === 'asia' ? '#b388ff' : '#4fc3f7')+'" opacity=".07"/>';
-          out += '<text x="'+(((run.s - firstB) * slot) + 3).toFixed(1)+'" y="'+(bot - 4)+'" font-size="9" style="fill:'+(run.nm === 'asia' ? '#b388ff' : '#4fc3f7')+'" opacity=".8">'+(run.nm === 'asia' ? 'Asia open' : 'London open')+'</text>';
+          out += '<rect x="'+((run.s - firstB) * slot).toFixed(1)+'" y="'+top+'" width="'+((k - run.s) * slot).toFixed(1)+'" height="'+(bot - top)+'" style="fill:'+'#f0b90b'+'" opacity=".05"/>';
+          out += '<text x="'+(((run.s - firstB) * slot) + 3).toFixed(1)+'" y="'+(bot - 4)+'" font-size="9" style="fill:'+'#f0b90b'+'" opacity=".8">'+'Signals window'+'</text>';
           run = null;
         }
         if (nm && !run) run = { nm:nm, s:k };
@@ -839,15 +871,16 @@ function analyze(x){
   }
   function renderDiag(){
     var now = Date.now(), ses = sessionAt(now), t;
-    if (ses) t = 'الجلسة الآن: ' + (ses.name === 'asia' ? 'افتتاح آسيا (طوكيو)' : 'افتتاح أوروبا (لندن/فرانكفورت)') + ' · تنتهي ' + hm(ses.end) + ' (بعد ' + durText(ses.end - now) + ')';
-    else { var nw = nextWindow(now); t = 'خارج نوافذ الافتتاح، لا إشارات الآن' + (nw ? ' · القادمة: ' + (nw.name === 'asia' ? 'آسيا' : 'أوروبا') + ' الساعة ' + hm(nw.start) + ' بتوقيتك (بعد ' + durText(nw.start - now) + ')' : ''); }
+    var wl = hhmm(WIN.from) + '–' + hhmm(WIN.to) + ' بتوقيت القاهرة';
+    if (ses) t = 'نافذة الإشارات مفتوحة (' + wl + ') · تنتهي ' + hmCairo(ses.end) + ' (بعد ' + durText(ses.end - now) + ')';
+    else { var nw = nextWindow(now); t = 'خارج نافذة الإشارات (' + wl + ') · لا إشارات الآن' + (nw ? ' · تبدأ ' + hmCairo(nw.start) + ' بتوقيت القاهرة (بعد ' + durText(nw.start - now) + ')' : ''); }
     $('sess').textContent = t;
     var tf = SIGTFS.indexOf(S.tf) >= 0 ? S.tf : 300, g = DIAGS[tf], d;
     if (!g) { $('diag').textContent = 'تحليل ' + TFLBL[tf] + ': ينتظر أول إغلاق شمعة…'; return; }
     var dr = g.dir === 'buy' ? 'شراء' : 'بيع';
     switch (g.st) {
       case 'data': d = 'بيانات غير كافية (' + (g.n || 0) + ' من 60 شمعة)'; break;
-      case 'session': d = 'خارج نوافذ افتتاح آسيا وأوروبا'; break;
+      case 'session': d = 'خارج نافذة الإشارات'; break;
       case 'flat': d = 'السعر شبه ثابت (سوق مقفل أو هادئ)'; break;
       case 'gap': d = 'بيانات ناقصة بسبب انقطاع الصفحة، تتعافى تلقائيًا'; break;
       case 'htf': d = 'يحتاج تاريخ فريمات الساعة و4س واليومي (يأتي من بينانس)' + (histOk === false ? ' وهو غير متاح الآن' : ''); break;
@@ -1092,6 +1125,12 @@ function analyze(x){
     if (u && !/^https:\/\//i.test(u) && u.indexOf('://') >= 0) return;
     S.sentUrl = u; S.sentExt = null; save(); renderSent(); fetchSent();
   });
+  $('winApply').addEventListener('click', function(){
+    var f = parseFloat($('winFrom').value), t = parseFloat($('winTo').value);
+    if (!(f >= 0 && t <= 24 && f < t)) { showToast('الوقت غير صالح: اكتب ساعة البداية أصغر من ساعة النهاية (من 0 إلى 24)', ''); return; }
+    S.winFrom = f; S.winTo = t; setWin(); save(); draw(); renderDiag();
+    showToast('تم الحفظ: الإشارات من ' + hhmm(WIN.from) + ' إلى ' + hhmm(WIN.to) + ' بتوقيت القاهرة (الاثنين–الجمعة).', '');
+  });
   $('pipApply').addEventListener('click', function(){
     var v = parseFloat($('pipUsd').value);
     if (!(v >= 0.01 && v <= 1)) { showToast('قيمة البيب من 0.01 إلى 1 دولار', ''); return; }
@@ -1112,7 +1151,7 @@ function analyze(x){
   $('ntfyTopic').value = S.ntfy; $('sentUrl').value = S.sentUrl; $('pipUsd').value = S.pipUsd;
   $('oandaId').value = S.oanda.id || ''; $('oandaToken').value = S.oanda.token || ''; $('oandaEnv').value = S.oanda.env || 'practice';
   if (S.candles[60].length) oz = S.candles[60][S.candles[60].length-1].c;
-  setSens(); syncSettings(); replayOpen(); syncTf(); syncBell(); draw(); renderSent(); renderStatus(); renderDiag(); renderCot(); lockScreen();
+  setWin(); $('winFrom').value = S.winFrom; $('winTo').value = S.winTo; setSens(); syncSettings(); replayOpen(); syncTf(); syncBell(); draw(); renderSent(); renderStatus(); renderDiag(); renderCot(); lockScreen();
   setInterval(function(){ renderStatus(); renderSent(); renderDiag(); }, 1000);
   fetchPrice().then(schedule);
   fetchSent(); setInterval(fetchSent, SENT_MS);
