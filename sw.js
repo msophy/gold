@@ -1,5 +1,5 @@
 /* Service worker: offline app shell + local notifications */
-var CACHE = 'gold-pro-v1';
+var CACHE = 'gold-zones-v1';
 var ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(ASSETS); }).then(function () { return self.skipWaiting(); }));
