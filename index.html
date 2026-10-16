@@ -80,6 +80,15 @@ input[type=number]{flex:1;min-width:0;color:var(--ink);background:var(--bg);bord
 .foot .line.dim{font-size:.72rem;color:var(--muted)}
 .toast{white-space:pre-line}
 .tools{left:6px}
+select{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:7px 8px;font:inherit;font-size:.85rem}
+input[type=password],input[type=text]{flex:1;min-width:0;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;font-size:.9rem;direction:ltr;text-align:left}
+.ghost{background:transparent;border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:.8rem}
+.ghost[aria-pressed="true"]{border-color:var(--gold);color:var(--gold)}
+.row{display:flex;gap:8px}.field{margin-top:10px}
+label.f{display:block;font-size:.74rem;color:var(--muted);margin-bottom:4px;line-height:1.6}
+.sub{font-size:.72rem;color:var(--muted);line-height:1.6;margin:4px 0 0}
+.foot{max-height:46vh;overflow:auto}
+
 .tools button{padding:5px 6px;min-width:28px;font-size:11px}
 </style>
 </head>
@@ -121,6 +130,19 @@ input[type=number]{flex:1;min-width:0;color:var(--ink);background:var(--bg);bord
     <div class="line dim" id="evt">لا أحداث بعد: يُعلن هنا كسر الدعم أو المقاومة وسحب السيولة.</div>
     <div class="line dim" id="src"></div>
     <p class="banner" id="banner" hidden></p>
+    <details id="settings">
+      <summary>الإعدادات: مصدر السعر OANDA ونطاق العرض</summary>
+      <div class="field">
+        <label class="f">نطاق عرض الدعم والمقاومة والسيولة حول السعر (بالدولار)</label>
+        <div class="row"><button class="ghost" id="r10">10$</button><button class="ghost" id="r15">15$</button><button class="ghost" id="r20">20$</button></div>
+      </div>
+      <div class="field">
+        <label class="f">حساب OANDA: رقم الحساب ومفتاح API. من موقع OANDA: My Account ثم Manage API Access لإنشاء المفتاح، ورقم الحساب يشبه 101-001-1234567-001.</label>
+        <div class="row"><input type="text" id="oandaId" placeholder="101-001-1234567-001" autocomplete="off"><select id="oandaEnv" aria-label="نوع الحساب"><option value="practice">تجريبي</option><option value="live">حقيقي</option></select></div>
+        <div class="row" style="margin-top:6px"><input type="password" id="oandaToken" placeholder="API token" autocomplete="off"><button class="ghost" id="oandaApply">حفظ</button></div>
+        <p class="sub">يُحفظ المفتاح على جهازك فقط داخل المتصفح ولا يُرسل لغير OANDA. المفتاح يملك صلاحيات الحساب كلها، فالأفضل حساب تجريبي (Practice) وألا يستخدم هذا المفتاح غير هذه الصفحة. إن تعذّر الاتصال بـ OANDA يُستخدم gold-api تلقائيًا ويظهر لك تحذير.</p>
+      </div>
+    </details>
     <details>
       <summary>كيف تُحسب المناطق؟</summary>
       <p class="sub">مناطق الدعم والمقاومة: تُجمَّع القمم والقيعان المتقاربة في مناطق، وتُرتَّب حسب عدد اللمسات وحداثتها، مع إضافة مناطق الفريمات الأكبر (H1 وH4 واليومي). المنطقة فوق السعر مقاومة وتحته دعم، وتتبدّل تلقائيًا عند كسرها. السيولة: القمم والقيعان السابقة التي لم يخترقها السعر بعد (وقمم وقيعان متساوية، وقمة وقاع الأمس)، وتُعلن عند سحبها. هذه مناطق تقديرية تتحدث مع كل شمعة وليست إشارات تداول ولا نصيحة استثمارية. التثبيت كتطبيق: على أندرويد زر 📲، وعلى آيفون زر المشاركة في سفاري ثم "إضافة إلى الشاشة الرئيسية".</p>
@@ -138,23 +160,25 @@ input[type=number]{flex:1;min-width:0;color:var(--ink);background:var(--bg);bord
   var HOSTS = ['https://data-api.binance.vision', 'https://api.binance.com'];
   var fmt = new Intl.NumberFormat('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
 
-  var S = { tf:300, showZ:true, showL:true, candles:{} };
+  var S = { tf:300, showZ:true, showL:true, range:20, oanda:{ id:'', token:'', env:'practice' }, candles:{} };
   TFS.forEach(function(t){ S.candles[t] = []; });
   try {
     var raw = localStorage.getItem(KEY);
     if (raw) {
       var P = JSON.parse(raw);
-      ['tf','showZ','showL'].forEach(function(k){ if (P[k] !== undefined) S[k] = P[k]; });
+      ['tf','showZ','showL','range','oanda'].forEach(function(k){ if (P[k] !== undefined) S[k] = P[k]; });
       if (P.candles) TFS.forEach(function(t){
         if (Array.isArray(P.candles[t])) S.candles[t] = P.candles[t].map(function(a){ return { b:a[0], t:a[0]*t*1000, o:a[1], h:a[2], l:a[3], c:a[4] }; });
       });
     }
   } catch(e) {}
   if (TFS.indexOf(S.tf) < 0) S.tf = 300;
+  if (!S.oanda || typeof S.oanda !== 'object') S.oanda = { id:'', token:'', env:'practice' };
+  if ([10, 15, 20].indexOf(S.range) < 0) S.range = 20;
   var lastSaveAt = 0;
   function save(){
     try {
-      var o = { tf:S.tf, showZ:S.showZ, showL:S.showL, candles:{} };
+      var o = { tf:S.tf, showZ:S.showZ, showL:S.showL, range:S.range, oanda:S.oanda, candles:{} };
       TFS.forEach(function(t){ o.candles[t] = S.candles[t].slice(-500).map(function(c){ return [c.b, c.o, c.h, c.l, c.c]; }); });
       localStorage.setItem(KEY, JSON.stringify(o)); lastSaveAt = Date.now();
     } catch(e) {}
@@ -233,6 +257,7 @@ input[type=number]{flex:1;min-width:0;color:var(--ink);background:var(--bg);bord
       if (m && z.lo <= m.hi + 0.2 * atr && Math.max(m.hi, z.hi) - Math.min(m.lo, z.lo) <= 3 * atr) { m.hi = Math.max(m.hi, z.hi); m.lo = Math.min(m.lo, z.lo); m.score += z.score; m.touches += z.touches; }
       else { m = { lo:z.lo, hi:z.hi, score:z.score, touches:z.touches }; merged.push(m); }
     });
+    var R = S.range;
     merged.forEach(function(z){
       var d = z.hi < price ? price - z.hi : z.lo > price ? z.lo - price : 0;
       z.dist = d; z.rank = z.score * (1 + 0.15 * z.touches) / (1 + d / (6 * atr));
@@ -240,9 +265,10 @@ input[type=number]{flex:1;min-width:0;color:var(--ink);background:var(--bg);bord
     });
     function pick(list){
       var keep = [];
+      list = list.filter(function(z){ return z.dist <= R; });
       list.sort(function(a, b){ return b.rank - a.rank; });
       list.forEach(function(z){
-        if (keep.length >= 3) return;
+        if (keep.length >= 1) return;
         if (keep.every(function(k){ return z.lo > k.hi + 1.5 * atr || z.hi < k.lo - 1.5 * atr; })) keep.push(z);
       });
       return keep.sort(function(a, b){ return a.dist - b.dist; });
@@ -263,15 +289,15 @@ input[type=number]{flex:1;min-width:0;color:var(--ink);background:var(--bg);bord
     if (tf < 3600) { var h1 = closedOf(3600, now, 200); if (h1.length > 10) unswept(h1, 3, 'H1', 1.5); }
     var d1 = closedOf(86400, now, 3);
     if (d1.length && tf < 86400) { var pd = d1[d1.length-1]; if (price < pd.h) pools.push({ p:pd.h, side:'up', name:'PDH', w:3 }); if (price > pd.l) pools.push({ p:pd.l, side:'dn', name:'PDL', w:3 }); }
-    var ups = pools.filter(function(q){ return q.side === 'up' && q.p > price; }).sort(function(a, b){ return a.p - b.p; });
-    var dns = pools.filter(function(q){ return q.side === 'dn' && q.p < price; }).sort(function(a, b){ return b.p - a.p; });
+    var ups = pools.filter(function(q){ return q.side === 'up' && q.p > price && q.p - price <= R; }).sort(function(a, b){ return a.p - b.p; });
+    var dns = pools.filter(function(q){ return q.side === 'dn' && q.p < price && price - q.p <= R; }).sort(function(a, b){ return b.p - a.p; });
     function eq(list){ /* equal highs / lows: two resting levels within 0.25 ATR */
       for (var a = 0; a < list.length; a++) for (var b = a + 1; b < list.length; b++) if (Math.abs(list[a].p - list[b].p) <= 0.25 * atr) { list[a].name = 'EQ'; list[a].w += 1; list[b].dup = true; }
       return list.filter(function(q){ return !q.dup; });
     }
     function dedupe(list){ var o = []; list.forEach(function(q){ var l = o[o.length-1]; if (l && Math.abs(l.p - q.p) < 0.2 * atr) { if (q.w > l.w) o[o.length-1] = q; } else o.push(q); }); return o; }
-    res.liqUp = dedupe(eq(ups)).slice(0, 2);
-    res.liqDn = dedupe(eq(dns)).slice(0, 2);
+    res.liqUp = dedupe(eq(ups)).slice(0, 1);
+    res.liqDn = dedupe(eq(dns)).slice(0, 1);
     return res;
   }
   var zCache = { k:'', v:null }, zPrev = {}, evtText = '', evtAt = 0, toastTimer = null;
@@ -333,9 +359,9 @@ input[type=number]{flex:1;min-width:0;color:var(--ink);background:var(--bg);bord
     out.sort(function(x, y){ return x.b - y.b; });
     S.candles[tf] = out.slice(-1500);
   }
-  function getJSON(url){
+  function getJSON(url, headers){
     var ctl = new AbortController(), to = setTimeout(function(){ ctl.abort(); }, 9000);
-    return fetch(url, { signal:ctl.signal, cache:'no-store' }).then(function(r){ clearTimeout(to); if (!r.ok) throw new Error('http'); return r.json(); });
+    return fetch(url, { signal:ctl.signal, cache:'no-store', headers:headers || undefined }).then(function(r){ clearTimeout(to); if (!r.ok) throw new Error('http'); return r.json(); });
   }
   function klines(sym, iv, limit){
     var i = 0;
@@ -345,20 +371,47 @@ input[type=number]{flex:1;min-width:0;color:var(--ink);background:var(--bg);bord
     }
     return next();
   }
+  function oandaOn(){ var o = S.oanda; return !!(o && o.id && o.token); }
+  function oandaHost(){ return S.oanda.env === 'live' ? 'api-fxtrade.oanda.com' : 'api-fxpractice.oanda.com'; }
+  function oandaAuth(){ return { 'Authorization':'Bearer ' + S.oanda.token }; }
+  function oandaCandles(tf){
+    var g = { 60:'M1', 300:'M5', 900:'M15', 3600:'H1' }[tf];
+    if (!g) return Promise.reject(new Error('tf'));
+    return getJSON('https://' + oandaHost() + '/v3/instruments/XAU_USD/candles?granularity=' + g + '&count=1000&price=M', oandaAuth()).then(function(d){
+      var ms = tf * 1000;
+      return (d.candles || []).map(function(c){
+        var t = Date.parse(String(c.time).replace(/(\.\d{3})\d*Z$/, '$1Z')), b = Math.floor(t / ms), m = c.mid || {};
+        return { b:b, t:b*ms, o:+m.o, h:+m.h, l:+m.l, c:+m.c };
+      }).filter(function(x){ return isFinite(x.b) && isFinite(x.o) && isFinite(x.c); });
+    });
+  }
   function loadHistory(){
     if (!oz) return;
     histAt = Date.now();
-    Promise.all(TFS.map(function(tf){ return klines('PAXGUSDT', HIST[tf], 1000).then(function(d){ return { tf:tf, d:d }; }).catch(function(){ return null; }); })).then(function(res){
-      var m1 = res.filter(function(r){ return r && r.tf === 60 && r.d.length; })[0];
-      if (!m1) { histOk = false; return; }
-      var f = oz / Number(m1.d[m1.d.length-1][4]);
-      if (!isFinite(f) || f < 0.97 || f > 1.03) { histOk = false; return; }
-      res.forEach(function(r){
-        if (!r || !r.d.length) return;
-        var ms = r.tf * 1000;
-        mergeHist(r.tf, r.d.map(function(k){ var b = Math.floor(Number(k[0]) / ms); return { b:b, t:b*ms, o:r2(k[1]*f), h:r2(k[2]*f), l:r2(k[3]*f), c:r2(k[4]*f) }; }));
-      });
-      histOk = true; zCache.k = ''; save(); draw();
+    var useO = oandaOn();
+    Promise.all(TFS.map(function(tf){
+      function bn(){ return klines('PAXGUSDT', HIST[tf], 1000).then(function(d){ return { tf:tf, d:d, src:'b' }; }).catch(function(){ return null; }); }
+      if (useO && tf <= 3600) return oandaCandles(tf).then(function(list){ if (!list.length) throw new Error('empty'); return { tf:tf, list:list, src:'o' }; }).catch(bn);
+      return bn();
+    })).then(function(res){
+      function apply(f){
+        var any = false;
+        res.forEach(function(r){
+          if (!r) return;
+          if (r.src === 'o') { mergeHist(r.tf, r.list); any = true; }
+          else if (f && r.d.length) {
+            var ms = r.tf * 1000;
+            mergeHist(r.tf, r.d.map(function(k){ var b = Math.floor(Number(k[0]) / ms); return { b:b, t:b*ms, o:r2(k[1]*f), h:r2(k[2]*f), l:r2(k[3]*f), c:r2(k[4]*f) }; }));
+            any = true;
+          }
+        });
+        histOk = any; zCache.k = ''; save(); draw();
+      }
+      if (!res.some(function(r){ return r && r.src === 'b'; })) { apply(1); return; }
+      klines('PAXGUSDT', '1m', 2).then(function(d){
+        var f = oz / Number(d[d.length-1][4]);
+        apply(isFinite(f) && f > 0.97 && f < 1.03 ? f : null);
+      }).catch(function(){ apply(null); });
     });
   }
 
@@ -482,14 +535,14 @@ input[type=number]{flex:1;min-width:0;color:var(--ink);background:var(--bg);bord
   }
   function rng(z){ return fmt.format(z.lo) + '–' + fmt.format(z.hi); }
   function renderSummary(){
-    var Z = zonesNow(Date.now()), p = oz, t = [];
+    var Z = zonesNow(Date.now()), p = oz, t = [], R = S.range;
     if (Z.inside) t.push('السعر داخل منطقة ' + rng(Z.inside));
-    if (Z.res[0]) t.push('أقرب مقاومة: ' + rng(Z.res[0]) + ' (+' + fmt.format(Z.res[0].lo - p) + '$)');
-    if (Z.sup[0]) t.push('أقرب دعم: ' + rng(Z.sup[0]) + ' (−' + fmt.format(p - Z.sup[0].hi) + '$)');
-    $('sum').textContent = t.length ? t.join(' · ') : 'جارٍ تحديد المناطق…';
+    t.push(Z.res[0] ? 'مقاومة: ' + rng(Z.res[0]) + ' (+' + fmt.format(Z.res[0].lo - p) + '$)' : 'لا مقاومة ضمن ' + R + '$');
+    t.push(Z.sup[0] ? 'دعم: ' + rng(Z.sup[0]) + ' (−' + fmt.format(p - Z.sup[0].hi) + '$)' : 'لا دعم ضمن ' + R + '$');
+    $('sum').textContent = t.join(' · ');
     var l = [];
-    if (Z.liqUp[0]) l.push('سيولة فوق: ' + fmt.format(Z.liqUp[0].p) + (Z.liqUp[1] ? ' ثم ' + fmt.format(Z.liqUp[1].p) : ''));
-    if (Z.liqDn[0]) l.push('سيولة تحت: ' + fmt.format(Z.liqDn[0].p) + (Z.liqDn[1] ? ' ثم ' + fmt.format(Z.liqDn[1].p) : ''));
+    l.push(Z.liqUp[0] ? 'سيولة فوق: ' + fmt.format(Z.liqUp[0].p) + ' (+' + fmt.format(Z.liqUp[0].p - p) + '$)' : 'لا سيولة فوق ضمن ' + R + '$');
+    l.push(Z.liqDn[0] ? 'سيولة تحت: ' + fmt.format(Z.liqDn[0].p) + ' (−' + fmt.format(p - Z.liqDn[0].p) + '$)' : 'لا سيولة تحت ضمن ' + R + '$');
     $('liq').textContent = l.join(' · ');
   }
 
@@ -571,16 +624,32 @@ input[type=number]{flex:1;min-width:0;color:var(--ink);background:var(--bg);bord
     if (now - lastSaveAt > 20000) save();
     draw(); renderSummary();
   }
-  function fetchPrice(){
-    if (inFlight) return Promise.resolve();
-    inFlight = true;
+  var srcName = 'gold-api', fellBack = false;
+  function fromOanda(){
+    return getJSON('https://' + oandaHost() + '/v3/accounts/' + encodeURIComponent(S.oanda.id) + '/pricing?instruments=XAU_USD', oandaAuth()).then(function(d){
+      var q = d && d.prices && d.prices[0];
+      var b = Number(q && ((q.bids && q.bids[0] && q.bids[0].price) || q.closeoutBid)), a = Number(q && ((q.asks && q.asks[0] && q.asks[0].price) || q.closeoutAsk)), m = (b + a) / 2;
+      if (!isFinite(m) || m <= 0) throw new Error('bad');
+      return { p:m, mts:0, src:'OANDA' };
+    });
+  }
+  function fromGoldApi(){
     return getJSON(PRICE_URL).then(function(d){
       var p = Number(d && (d.price != null ? d.price : (d.priceUsd != null ? d.priceUsd : d.ask)));
       if (!isFinite(p) || p <= 0) throw new Error('bad');
-      var mts = d && d.updatedAt ? Date.parse(d.updatedAt) : 0, first = !lastOkAt;
-      failures = 0; lastOkAt = Date.now();
-      applyLive(p, isFinite(mts) ? mts : 0);
-      if (first) loadHistory();
+      var mts = d && d.updatedAt ? Date.parse(d.updatedAt) : 0;
+      return { p:p, mts:isFinite(mts) ? mts : 0, src:'gold-api' };
+    });
+  }
+  function fetchPrice(){
+    if (inFlight) return Promise.resolve();
+    inFlight = true;
+    var req = oandaOn() ? fromOanda().then(function(r){ fellBack = false; return r; }, function(){ fellBack = true; return fromGoldApi(); }) : (fellBack = false, fromGoldApi());
+    return req.then(function(r){
+      var first = !lastOkAt, switched = srcName !== r.src;
+      failures = 0; lastOkAt = Date.now(); srcName = r.src;
+      applyLive(r.p, r.mts);
+      if (first || switched) loadHistory();
     }).catch(function(){ failures++; }).then(function(){ inFlight = false; renderStatus(); });
   }
   function schedule(){
@@ -598,11 +667,23 @@ input[type=number]{flex:1;min-width:0;color:var(--ink);background:var(--bg);bord
     banner.hidden = true;
     if (!lastOkAt) dot.className = failures ? 'dot off' : 'dot';
     else dot.className = (Date.now() - lastOkAt <= 10000) ? 'dot live' : 'dot off';
-    $('src').textContent = 'سعر الذهب العالمي XAU/USD من gold-api.com، يتحدث كل ثانية' + (histOk === false ? ' · تاريخ الشموع غير متاح (بينانس محجوب)' : '');
+    var st;
+    if (!oandaOn()) st = 'السعر مؤقتًا من gold-api. أدخل بيانات OANDA من الإعدادات';
+    else if (srcName === 'OANDA') st = 'مصدر السعر: OANDA (' + (S.oanda.env === 'live' ? 'حساب حقيقي' : 'حساب تجريبي') + ') · يتحدث كل ثانية';
+    else st = '⚠ تعذّر الاتصال بـ OANDA، السعر مؤقتًا من gold-api (احتياطي)';
+    $('src').textContent = st + (histOk === false ? ' · تاريخ الشموع غير متاح' : '');
     if (failures >= 2) { banner.hidden = false; banner.textContent = oz ? 'تعذر جلب السعر. تُعرض آخر بيانات محفوظة.' : 'تعذر جلب السعر. تأكد من الاتصال بالإنترنت.'; }
     else if (lastOkAt && marketTs && (Date.now() - marketTs) > 900000) { banner.hidden = false; banner.textContent = 'السعر لم يتغير منذ فترة. غالبًا السوق مقفل (عطلة نهاية الأسبوع).'; }
   }
   var deferred = null;
+    /* ---------- settings ---------- */
+  function syncRange(){ [10, 15, 20].forEach(function(r){ $('r' + r).setAttribute('aria-pressed', S.range === r); }); }
+  [10, 15, 20].forEach(function(r){ $('r' + r).addEventListener('click', function(){ S.range = r; zCache.k = ''; zCache.pl = null; save(); syncRange(); draw(); renderSummary(); }); });
+  $('oandaApply').addEventListener('click', function(){
+    S.oanda = { id:$('oandaId').value.trim(), token:$('oandaToken').value.trim(), env:$('oandaEnv').value === 'live' ? 'live' : 'practice' };
+    save(); failures = 0; srcName = ''; lastOkAt = 0; fetchPrice(); renderStatus();
+    var t = $('toast'); t.textContent = oandaOn() ? 'تم حفظ حساب OANDA على هذا الجهاز. جارٍ الاتصال…' : 'تم إيقاف OANDA والعودة لـ gold-api'; t.hidden = false; setTimeout(function(){ t.hidden = true; }, 6000);
+  });
   window.addEventListener('beforeinstallprompt', function(e){ e.preventDefault(); deferred = e; $('install').hidden = false; });
   $('install').addEventListener('click', function(){ if (!deferred) return; deferred.prompt(); deferred = null; $('install').hidden = true; });
   window.addEventListener('appinstalled', function(){ $('install').hidden = true; });
@@ -610,7 +691,9 @@ input[type=number]{flex:1;min-width:0;color:var(--ink);background:var(--bg);bord
 
   /* ---------- init ---------- */
   if (S.candles[60].length) oz = S.candles[60][S.candles[60].length-1].c;
-  syncTf(); syncLayers(); draw(); renderStatus(); renderSummary();
+  $('oandaId').value = S.oanda.id || ''; $('oandaToken').value = S.oanda.token || ''; $('oandaEnv').value = S.oanda.env || 'practice';
+  $('settings').open = !oandaOn();
+  syncTf(); syncLayers(); syncRange(); draw(); renderStatus(); renderSummary();
   setInterval(function(){ renderStatus(); if (oz) renderSummary(); }, 1000);
   fetchPrice().then(schedule);
 })();
